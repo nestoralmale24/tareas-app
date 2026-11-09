@@ -76,6 +76,10 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(12px + 
 .due.soon{color:var(--warn);font-weight:600}
 .prio{font-weight:600}
 .prio.alta{color:var(--danger)}
+.nota{font-weight:650;border:1px solid currentColor;border-radius:999px;padding:0 7px;line-height:1.5}
+.nota.ok{color:var(--ok)}
+.nota.ko{color:var(--danger)}
+.nota.na{color:var(--muted)}
 .desc{margin-top:6px;font-size:13.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
 .empty{text-align:center;color:var(--muted);padding:48px 16px}
 .empty b{display:block;color:var(--text);font-size:17px;margin-bottom:6px}
@@ -178,6 +182,10 @@ label.f textarea{min-height:110px;resize:vertical}
     </label>
     <label class="f">Enlace (opcional)
       <input name="enlace" type="url" placeholder="https://…" inputmode="url">
+    </label>
+    <label class="f">Nota (opcional)
+      <input name="nota" list="notasSugeridas" maxlength="30" autocomplete="off" placeholder="Apto, No apto o 8,50 / 10">
+      <datalist id="notasSugeridas"><option value="Apto"></option><option value="No apto"></option></datalist>
     </label>
     <p class="small" id="taskInfo"></p>
     <div class="actions">
@@ -524,6 +532,17 @@ label.f textarea{min-height:110px;resize:vertical}
     }
   }
 
+  // Color de la nota: verde si es apto o llega a la mitad, rojo si no, gris si no se entiende.
+  function claseNota(nota) {
+    const v = String(nota).trim().toLowerCase();
+    if (/^no\s*apt/.test(v)) return "ko";
+    if (/^apt/.test(v)) return "ok";
+    const nums = (v.match(/\d+(?:[.,]\d+)?/g) || []).map(x => parseFloat(x.replace(",", ".")));
+    if (!nums.length) return "na";
+    const max = nums.length > 1 && nums[1] > 0 ? nums[1] : 10;
+    return nums[0] / max >= 0.5 ? "ok" : "ko";
+  }
+
   function card(t) {
     const m = modById(t.modulo);
     const el = document.createElement("article");
@@ -558,6 +577,7 @@ label.f textarea{min-height:110px;resize:vertical}
     const due = dueLabel(t);
     if (due) { const s = document.createElement("span"); s.className = "due " + due.cls; s.textContent = due.txt; meta.append(s); }
     if (t.prioridad === "alta" && !t.completada) { const p = document.createElement("span"); p.className = "prio alta"; p.textContent = "Prioridad alta"; meta.append(p); }
+    if (t.nota) { const n = document.createElement("span"); n.className = "nota " + claseNota(t.nota); n.textContent = t.nota; n.title = "Nota"; meta.append(n); }
     if (t.enlace) { const l = document.createElement("span"); l.textContent = "🔗"; l.title = "Tiene enlace"; meta.append(l); }
     body.append(title, meta);
     if (t.descripcion) { const d = document.createElement("div"); d.className = "desc"; d.textContent = t.descripcion; body.append(d); }
@@ -624,6 +644,7 @@ label.f textarea{min-height:110px;resize:vertical}
     form.querySelector(`input[name=prioridad][value="${t ? (t.prioridad || "media") : "media"}"]`).checked = true;
     form.elements.descripcion.value = t ? (t.descripcion || "") : "";
     form.elements.enlace.value = t ? (t.enlace || "") : "";
+    form.elements.nota.value = t ? (t.nota || "") : "";
     const info = $("#taskInfo");
     info.textContent = "";
     if (t) {
@@ -650,6 +671,7 @@ label.f textarea{min-height:110px;resize:vertical}
       prioridad: form.querySelector("input[name=prioridad]:checked")?.value || "media",
       descripcion: form.elements.descripcion.value.trim(),
       enlace: form.elements.enlace.value.trim(),
+      nota: form.elements.nota.value.trim() || null,
     };
     if (state.editingId) {
       commit(ops.update(state.editingId, fields), `tareas: editar «${titulo}»`);
@@ -747,7 +769,7 @@ label.f textarea{min-height:110px;resize:vertical}
     const j = await res.json();
     return { ok: true, commit: (j.commit && j.commit.sha || "").slice(0, 7) };
   }
-  window.tareasApp = Object.freeze({ version: 1, conectada: () => configured(), leerJSON, guardarJSON });
+  window.tareasApp = Object.freeze({ version: 2, conectada: () => configured(), leerJSON, guardarJSON });
 
   // ---------- Arranque ----------
   try {
