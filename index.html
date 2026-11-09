@@ -721,6 +721,34 @@ label.f textarea{min-height:110px;resize:vertical}
   $("#btnRefresh").onclick = () => load();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && configured()) load({ quiet: true }); });
 
+  // ---------- Acceso para la revisión de Moodle ----------
+  // La revisión de Moodle (Claude) usa esto para guardar las tutorías en tareas/clases.json,
+  // en la misma rama y con el token de este navegador, sin ver ni manejar el token.
+  // Solo se puede leer o escribir lo que hay en FICHEROS_AUX.
+  const FICHEROS_AUX = ["tareas/clases.json"];
+  function auxUrl(ruta) {
+    if (!FICHEROS_AUX.includes(ruta)) throw new Error(`Fichero no permitido: ${ruta}`);
+    if (!configured()) throw new Error("La app no está conectada con GitHub (⚙)");
+    return `${repoUrl()}/contents/${ruta.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  async function leerJSON(ruta) {
+    const res = await fetch(`${auxUrl(ruta)}?ref=${encodeURIComponent(state.cfg.branch)}&_=${Date.now()}`, { headers: headers(), cache: "no-store" });
+    if (res.status === 404) return { data: null, sha: null };
+    if (!res.ok) throw await httpError(res);
+    const j = await res.json();
+    return { data: JSON.parse(b64decode(j.content || "")), sha: j.sha };
+  }
+  async function guardarJSON(ruta, data, mensaje) {
+    const { sha } = await leerJSON(ruta);
+    const body = { message: mensaje || `actualizar ${ruta}`, content: b64encode(JSON.stringify(data, null, 2) + "\n"), branch: state.cfg.branch };
+    if (sha) body.sha = sha;
+    const res = await fetch(auxUrl(ruta), { method: "PUT", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw await httpError(res);
+    const j = await res.json();
+    return { ok: true, commit: (j.commit && j.commit.sha || "").slice(0, 7) };
+  }
+  window.tareasApp = Object.freeze({ version: 1, conectada: () => configured(), leerJSON, guardarJSON });
+
   // ---------- Arranque ----------
   try {
     const cached = JSON.parse(safeGet(LS_CACHE) || "null");
